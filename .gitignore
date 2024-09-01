@@ -1,0 +1,8 @@
+.DS_Store
+*.md
+*.plot
+*.txt
+*.html
+bard
+!readme.MD
+.env
