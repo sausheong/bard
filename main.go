@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/hako/durafmt"
 	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v2"
 	"github.com/yuin/goldmark"
@@ -60,111 +61,110 @@ func main() {
 		Usage:     "Using AI to create stories",
 		Commands: []*cli.Command{
 			{
-				Name:    "prepare",
-				Aliases: []string{"p"},
-				Usage:   "prepare a plot for the story",
+				Name:  "prepare",
+				Usage: "prepare a plot for the story",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "seedfile",
-						Aliases:  []string{"s"},
 						Value:    "seed.txt",
 						Usage:    "seed file to use",
 						Required: true,
 					},
+					&cli.StringFlag{
+						Name:     "plotfile",
+						Value:    "plot.txt",
+						Usage:    "plot file to create",
+						Required: true,
+					},
 				},
 				Action: func(c *cli.Context) error {
-					startTime := time.Now()
-					seed := randomInt()
-					title := c.String("title")
-					model := c.String("model")
-					seedfile := c.String("seedfile")
-					generatePlot(seedfile, seed, title, model)
-					fmt.Println(yellow(fmt.Sprintf("Done in %s", time.Since(startTime))))
+					t0 := time.Now()
+					plot(c.String("seedfile"), c.String("plotfile"), c.String("model"))
+					elapsed := durafmt.Parse(time.Since(t0)).LimitFirstN(1)
+					fmt.Println(yellow(fmt.Sprintf("Plot %s generated in %s",
+						c.String("plotfile"), elapsed)))
 					return nil
 				},
 			},
 			{
-				Name:    "generate",
-				Aliases: []string{"g"},
-				Usage:   "generate a story",
+				Name:  "generate",
+				Usage: "generate a story",
 				Flags: []cli.Flag{
 					&cli.IntFlag{
-						Name:    "num_chapters",
+						Name:    "num_parts",
 						Aliases: []string{"n"},
 						Value:   4,
-						Usage:   "number of chapters, must be more than 3",
+						Usage:   "number of parts, must be more than 3",
 						Action: func(ctx *cli.Context, v int) error {
 							if v <= 3 {
-								return fmt.Errorf("you have tried to set %d chapters. "+
-									"Each story must have at least 4 chapters", v)
+								return fmt.Errorf("you have tried to set %d parts. "+
+									"Each story must have at least 4 parts", v)
 							}
 							return nil
 						},
 					},
 					&cli.StringFlag{
 						Name:     "plotfile",
-						Aliases:  []string{"p"},
-						Value:    "",
+						Value:    "plot.txt",
 						Usage:    "plot file to use",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "mdfile",
+						Value:    "story.md",
+						Usage:    "markdown file to convert",
 						Required: true,
 					},
 					&cli.BoolFlag{
 						Name:     "verbose",
 						Aliases:  []string{"v"},
 						Value:    false,
-						Usage:    "print chapters to screen",
+						Usage:    "print parts to screen",
 						Required: false,
 					},
 				},
 				Action: func(c *cli.Context) error {
-					startTime := time.Now()
-					seed := randomInt()
-					title := c.String("title")
-					model := c.String("model")
-					numChapters := c.Int("num_chapters")
-					plotfile := c.String("plotfile")
-					verbose := c.Bool("verbose")
-					generateChapters(plotfile, seed, title, model, numChapters, verbose)
-					fmt.Println(yellow(fmt.Sprintf("Done in %s", time.Since(startTime))))
+					t0 := time.Now()
+					story(c.String("plotfile"),
+						c.String("mdfile"),
+						c.String("model"),
+						c.Int("num_parts"),
+						c.Bool("verbose"))
+					elapsed := durafmt.Parse(time.Since(t0)).LimitFirstN(1)
+					fmt.Println(yellow(fmt.Sprintf("Story %s generated in %s",
+						c.String("mdfile"), elapsed)))
 					return nil
 
 				},
 			},
 			{
-				Name:    "convert",
-				Aliases: []string{"c"},
-				Usage:   "convert the markdown file to HTML",
+				Name:  "convert",
+				Usage: "convert the markdown file to HTML",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "mdfile",
-						Aliases:  []string{"m"},
 						Value:    "story.md",
 						Usage:    "markdown file to convert",
 						Required: true,
 					},
 					&cli.StringFlag{
-						Name:     "outputfile",
-						Aliases:  []string{"o"},
-						Value:    "story.html",
+						Name:     "htmlfile",
+						Value:    "output.html",
 						Usage:    "output HTML file name",
 						Required: true,
 					},
 				},
 				Action: func(c *cli.Context) error {
 					startTime := time.Now()
-					convertToHtml(c.String("mdfile"), c.String("outputfile"))
-					fmt.Println(yellow(fmt.Sprintf("Done in %s", time.Since(startTime))))
+					convert(c.String("mdfile"), c.String("htmlfile"))
+					fmt.Println(yellow(fmt.Sprintf(
+						"HTML file %s converted in %s",
+						c.String("htmlfile"), time.Since(startTime))))
 					return nil
 				},
 			},
 		},
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "title",
-				Aliases: []string{"t"},
-				Value:   "My AI Generated Story",
-				Usage:   "the title of the story to create",
-			},
 			&cli.StringFlag{
 				Name:    "model",
 				Aliases: []string{"m"},
@@ -180,100 +180,84 @@ func main() {
 }
 
 // generate the plot, given a seed file
-func generatePlot(seedfile string, seed int, title string, model string) {
+func plot(seedfile string, plotfile string, model string) {
 	fmt.Println(yellow("Preparing the plot from the seed now."))
-	startTime := time.Now()
 	plotSeed, err := readFile(seedfile)
 	if err != nil {
 		log.Fatalln("Cannot read seed file:", err)
 	}
 	prompt := fmt.Sprintf(prepare, plotSeed)
-	plot, err := generate(model, prompt, seed)
+	plot, err := generate(model, prompt, randomInt())
 	if err != nil {
 		log.Fatalln("Cannot generate plot:", err)
 	}
 
-	fmt.Println(yellow("> This is plot used in the story."))
+	fmt.Println(yellow("> This is the plot used in the story."))
 	fmt.Println()
 	fmt.Println(cyan(plot))
 	fmt.Println()
-	saveFile(fmt.Sprintf("plots/%s.plot", title), plot, true)
-	fmt.Println(yellow(fmt.Sprintf("Plot generated in %s, saved to plots/%s.plot", time.Since(startTime), title)))
+	saveFile(plotfile, plot, true)
 }
 
-// generate the chapters, given the plot file
-func generateChapters(plotfile string, seed int, title string, model string, numChapters int, verbose bool) {
-
-	fmt.Println(yellow("Generating chapters from plot file now."))
+// generate the parts, given the plot file
+func story(plotfile string, mdfile string, model string, numParts int, verbose bool) {
+	fmt.Println(yellow("Generating story from plot file now."))
 	var prompt string
 	var draft string
+	seed := randomInt()
 
 	plot, err := readFile(plotfile)
 	if err != nil {
 		log.Fatalln("Cannot read plot file:", err)
 	}
 
-	// 1. generate the first chapter
-	fmt.Println(yellow("> chapter 1"))
+	// 1. generate the first part
+	fmt.Println(yellow("> part 1"))
 	prompt = "[overall plot]\n" + plot + "\n---\n" + first
-	firstChapter, err := generate(model, prompt, seed)
+	firstPart, err := generate(model, prompt, seed)
 	if err != nil {
-		log.Fatalln("Cannot generate first chapter:", err)
+		log.Fatalln("Cannot generate first part:", err)
 	}
 	if verbose {
 		fmt.Println()
-		fmt.Println(firstChapter)
+		fmt.Println(firstPart)
 		fmt.Println()
 	}
-	draft += "\n\n" + firstChapter
-
-	// 2. generate the next chapter
-	fmt.Println(yellow("> chapter 2"))
-	prompt = "[overall plot]\n" + plot + "\n---\n" + "[story so far]\n" + firstChapter + "\n---\n" + next
-	nextChapter, err := generate(model, prompt, seed)
-	if err != nil {
-		log.Fatalln("Cannot generate next chapter:", err)
-	}
-	if verbose {
-		fmt.Println()
-		fmt.Println(nextChapter)
-		fmt.Println()
-	}
-	draft += "\n\n" + nextChapter
-
-	// 3. generate the next few chapters
-	for i := 0; i < numChapters-2; i++ {
-		fmt.Println(yellow(fmt.Sprintf("> chapter %d", i+3)))
+	draft += "\n\n" + firstPart
+	i := 1
+	// 2. generate the next few parts
+	for ; i < numParts-1; i++ {
+		fmt.Println(yellow(fmt.Sprintf("> part %d", i+1)))
 		prompt = "[overall plot]\n" + plot + "\n---\n" + "[story so far]\n" + draft + "\n---\n" + next
-		nextChapter, err = generate(model, prompt, seed)
+		nextPart, err := generate(model, prompt, seed)
 		if err != nil {
-			log.Fatalln("Cannot generate next chapter:", err)
+			log.Fatalln("Cannot generate next part:", err)
 		}
 		if verbose {
 			fmt.Println()
-			fmt.Println(nextChapter)
+			fmt.Println(nextPart)
 			fmt.Println()
 		}
-		draft += "\n\n" + nextChapter
+		draft += "\n\n" + nextPart
 	}
 
-	// 4. generate the final chapter
-	fmt.Println(yellow("> final chapter!"))
+	// 3. generate the final part
+	fmt.Println(yellow(fmt.Sprintf("> part %d (final part)", i+1)))
 	prompt = "[overall plot]\n" + plot + "\n---\n" + "[story so far]\n" + draft + "\n---\n" + last
-	lastChapter, _ := generate(model, prompt, seed)
+	lastPart, _ := generate(model, prompt, seed)
 	if verbose {
 		fmt.Println()
-		fmt.Println(lastChapter)
+		fmt.Println(lastPart)
 		fmt.Println()
 	}
-	draft += "\n\n" + lastChapter
+	draft += "\n\n" + lastPart
 
 	// save the draft
-	saveFile(fmt.Sprintf("md/%s.md", title), draft, true)
+	saveFile(mdfile, draft, true)
 }
 
 // convert the markdown to html
-func convertToHtml(mdfile string, outputfile string) {
+func convert(mdfile string, outputfile string) {
 	// read the markdown file
 	md, err := readFile(mdfile)
 	if err != nil {

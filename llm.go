@@ -65,8 +65,6 @@ func getLLM(model string) (llms.Model, error) {
 func complete(llm llms.Model, prompt string, seed int) (string, error) {
 	t0 := time.Now()
 	c := context.Background()
-	// seed is a random integer
-
 	completion, err := llms.GenerateFromSinglePrompt(
 		c,
 		llm,
@@ -78,7 +76,7 @@ func complete(llm llms.Model, prompt string, seed int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	elapsed := durafmt.Parse(time.Since(t0)).LimitFirstN(2)
+	elapsed := durafmt.Parse(time.Since(t0)).LimitFirstN(1)
 	fmt.Println(elapsed)
 	return completion, nil
 }
