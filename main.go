@@ -257,7 +257,7 @@ func story(plotfile string, mdfile string, model string, numParts int, verbose b
 }
 
 // convert the markdown to html
-func convert(mdfile string, outputfile string) {
+func convert(mdfile string, htmlfile string) {
 	// read the markdown file
 	md, err := readFile(mdfile)
 	if err != nil {
@@ -290,7 +290,7 @@ func convert(mdfile string, outputfile string) {
 
 	// save the html
 	output := fmt.Sprintf(string(template), buf.String())
-	err = os.WriteFile(fmt.Sprintf("html/%s", outputfile), []byte(output), 0644)
+	err = os.WriteFile(htmlfile, []byte(output), 0644)
 	if err != nil {
 		log.Fatalln("Cannot save pdf file:", err)
 	}

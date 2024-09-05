@@ -1,6 +1,6 @@
 package main
 
-var prepare = `Given the outline of the plot below, elaborating on the plot and
+var prepare = `Given the outline of the plot below, elaborate on the plot and
 provide the characters in the story and locations of where the story plays out.
 Give names to major characters and locations. Provide step by step progression 
 of the story.
